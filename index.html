@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Amigo Secreto</title>
+<style>
+:root{--bg:#fff8f0;--card:#ffffff;--tx:#2b2118;--mut:#7a6a5c;--ac:#c8372d;--acx:#ffffff;--bd:#ecdccb;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1612;--card:#2a211b;--tx:#f5ebe0;--mut:#b5a595;--ac:#e8584d;--acx:#1d1612;--bd:#3d3027;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1d1612;--card:#2a211b;--tx:#f5ebe0;--mut:#b5a595;--ac:#e8584d;--acx:#1d1612;--bd:#3d3027;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:480px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:26px;margin:0 0 4px}
+p.s{color:var(--mut);margin:0 0 18px;font-size:15px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:16px;margin-bottom:14px}
+.row{display:flex;gap:8px}
+input{flex:1;min-width:0;font-size:17px;padding:12px;border-radius:12px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+button{font-size:17px;font-weight:600;border:0;border-radius:12px;padding:12px 16px;background:var(--ac);color:var(--acx);cursor:pointer}
+button.g{background:transparent;color:var(--mut);border:1px solid var(--bd);font-weight:500}
+button:disabled{opacity:.4}
+ul{list-style:none;margin:12px 0 0;padding:0}
+li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 4px;border-bottom:1px solid var(--bd);font-size:17px}
+li:last-child{border-bottom:0}
+li button,a.btn{padding:6px 12px;font-size:14px}
+.acts{display:flex;gap:6px;align-items:center}
+a.btn{font-weight:600;border-radius:12px;background:var(--ac);color:var(--acx);text-decoration:none}
+.big{font-size:32px;font-weight:700;text-align:center;margin:18px 0;color:var(--ac)}
+.c{text-align:center}
+.hide{display:none}
+.hint{color:var(--mut);font-size:14px;margin-top:8px}
+select{flex:1;min-width:0;font-size:16px;padding:10px;border-radius:12px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+</style>
+</head>
+<body>
+<main>
+<h1>🎁 Amigo Secreto</h1>
+
+<section id="setup">
+  <p class="s">Adicione os participantes e sorteie. Cada pessoa recebe um link próprio com o resultado.</p>
+  <div class="card">
+    <div class="row">
+      <input id="nome" placeholder="Nome do participante" autocomplete="off" enterkeyhint="done">
+      <button id="add">Add</button>
+    </div>
+    <ul id="lista"></ul>
+    <div class="hint" id="dica"></div>
+  </div>
+  <div class="card">
+    <strong>Restrições</strong>
+    <div class="hint" style="margin:4px 0 10px">Quem não pode tirar quem (por exemplo, casais). Por padrão vale para os dois lados.</div>
+    <div class="row"><select id="ra"></select><select id="rb"></select></div>
+    <label class="hint" style="display:block"><input type="checkbox" id="rone" style="flex:none;width:auto;padding:0;margin-right:6px">Só num sentido: o primeiro não pode tirar o segundo</label>
+    <button id="radd" class="g" style="width:100%;margin-top:8px">Adicionar restrição</button>
+    <ul id="rlista"></ul>
+  </div>
+  <button id="sortear" style="width:100%" disabled>Sortear</button>
+</section>
+
+<section id="result" class="hide">
+  <p class="s">Sorteio feito! Envie a cada pessoa o link dela. Você não vê o resultado de ninguém aqui.</p>
+  <div class="card"><ul id="nomes"></ul></div>
+  <button class="g" id="novo" style="width:100%">Novo sorteio</button>
+  <div class="hint c">Ao fazer um novo sorteio, os links antigos continuam mostrando o resultado antigo. Mande só os links novos.</div>
+</section>
+
+<section id="link" class="hide">
+  <div class="card c">
+    <div style="color:var(--mut)" id="quem"></div>
+    <div class="big" id="amigo">• • • • •</div>
+    <button id="rev" style="width:100%">Toque para revelar</button>
+    <div class="hint">Veja com calma e não mostre a ninguém 🤫</div>
+  </div>
+</section>
+</main>
+<script>
+const BASE=location.href.split('#')[0];
+const $=id=>document.getElementById(id);
+const enc=new TextEncoder(),dec=new TextDecoder();
+let pessoas=[],links={},feitos=new Set(),restr=[];
+
+function hex(b){return Array.from(b,x=>x.toString(16).padStart(2,'0')).join('')}
+function unhex(h){const o=[];for(let i=0;i<h.length;i+=2)o.push(parseInt(h.substr(i,2),16));return new Uint8Array(o)}
+function codificar(de,para){
+  const t=enc.encode(de+'|'+para);
+  const k=crypto.getRandomValues(new Uint8Array(4));
+  return hex(k)+hex(t.map((x,i)=>x^k[i%4]));
+}
+function decodificar(c){
+  try{
+    const b=unhex(c),k=b.slice(0,4);
+    const [de,para]=dec.decode(b.slice(4).map((x,i)=>x^k[i%4])).split('|');
+    return de&&para?{de,para}:null;
+  }catch(e){return null}
+}
+
+function render(){
+  $('lista').innerHTML='';
+  pessoas.forEach((p,i)=>{
+    const li=document.createElement('li');
+    const s=document.createElement('span');s.textContent=p;
+    const b=document.createElement('button');b.className='g';b.textContent='Remover';
+    b.onclick=()=>{const n=pessoas[i];pessoas.splice(i,1);restr=restr.filter(r=>r[0]!==n&&r[1]!==n);render()};
+    li.append(s,b);$('lista').appendChild(li);
+  });
+  $('sortear').disabled=pessoas.length<3;
+  renderRestr();
+  $('dica').textContent=pessoas.length<3?'Adicione pelo menos 3 pessoas.':pessoas.length+' participantes';
+}
+function add(){
+  const n=$('nome').value.replace(/\|/g,'').trim();
+  if(!n)return;
+  if(pessoas.some(p=>p.toLowerCase()===n.toLowerCase())){alert('Esse nome já está na lista.');return}
+  pessoas.push(n);$('nome').value='';render();$('nome').focus();
+}
+$('add').onclick=add;
+$('nome').onkeydown=e=>{if(e.key==='Enter')add()};
+
+function proibido(a,b){return restr.some(r=>(r[0]===a&&r[1]===b)||(!r[2]&&r[0]===b&&r[1]===a))}
+function renderRestr(){
+  const A=$('ra'),B=$('rb');
+  [A,B].forEach(sel=>{
+    const v=sel.value;sel.innerHTML='';
+    pessoas.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o)});
+    if(pessoas.includes(v))sel.value=v;
+  });
+  if(pessoas.length>1&&A.value===B.value)B.selectedIndex=(A.selectedIndex+1)%pessoas.length;
+  $('rlista').innerHTML='';
+  restr.forEach((r,i)=>{
+    const li=document.createElement('li');
+    const s=document.createElement('span');s.textContent=r[2]?r[0]+' não tira '+r[1]:r[0]+' ⇄ '+r[1];
+    const b=document.createElement('button');b.className='g';b.textContent='Remover';
+    b.onclick=()=>{restr.splice(i,1);renderRestr()};
+    li.append(s,b);$('rlista').appendChild(li);
+  });
+  $('radd').disabled=pessoas.length<2;
+}
+$('radd').onclick=()=>{
+  const a=$('ra').value,b=$('rb').value;
+  const um=$('rone').checked;
+  if(!a||!b||a===b||restr.some(r=>r[0]===a&&r[1]===b&&!!r[2]===um))return;
+  restr.push([a,b,um]);renderRestr();
+};
+function sortearRestr(){
+  const ordem=embaralhar(pessoas),usados=new Set(),m={};
+  const ok=i=>{
+    if(i===ordem.length)return true;
+    const p=ordem[i];
+    for(const q of embaralhar(pessoas)){
+      if(q===p||usados.has(q)||proibido(p,q))continue;
+      m[p]=q;usados.add(q);
+      if(ok(i+1))return true;
+      usados.delete(q);delete m[p];
+    }
+    return false;
+  };
+  return ok(0)?m:null;
+}
+function embaralhar(a){
+  a=a.slice();
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
+  return a;
+}
+$('sortear').onclick=()=>{
+  const m=sortearRestr();
+  if(!m){alert('Não foi possível sortear com essas restrições. Remova alguma e tente de novo.');return}
+  links={};feitos=new Set();
+  pessoas.forEach(p=>{links[p]=BASE+'#'+codificar(p,m[p])});
+  $('setup').classList.add('hide');
+  $('result').classList.remove('hide');
+  renderNomes();
+};
+function renderNomes(){
+  $('nomes').innerHTML='';
+  pessoas.forEach(p=>{
+    const li=document.createElement('li');
+    const s=document.createElement('span');
+    s.textContent=(feitos.has(p)?'✓ ':'')+p;
+    const msg='🎁 Amigo Secreto da família! '+p+', abra seu link para descobrir quem você tirou (não mostre a ninguém): '+links[p];
+    const a=document.createElement('a');
+    a.className='btn';a.textContent='WhatsApp';a.target='_blank';a.rel='noopener';
+    a.href='https://wa.me/?text='+encodeURIComponent(msg);
+    a.onclick=()=>{feitos.add(p);setTimeout(renderNomes,300)};
+    const b=document.createElement('button');b.className='g';b.textContent='Copiar';
+    b.onclick=async()=>{
+      try{await navigator.clipboard.writeText(msg);b.textContent='Copiado!'}
+      catch(e){prompt('Copie a mensagem:',msg)}
+      feitos.add(p);setTimeout(renderNomes,900);
+    };
+    const w=document.createElement('div');w.className='acts';w.append(b,a);
+    li.append(s,w);$('nomes').appendChild(li);
+  });
+}
+$('novo').onclick=()=>{
+  if(!confirm('Começar um novo sorteio?'))return;
+  $('result').classList.add('hide');
+  $('setup').classList.remove('hide');
+  links={};feitos=new Set();
+};
+
+let alvo=null;
+$('rev').onclick=()=>{
+  $('amigo').textContent=alvo.para;
+  $('rev').classList.add('hide');
+};
+function checarHash(){
+  const c=location.hash.slice(1);
+  const r=/^[0-9a-f]{10,}$/.test(c)&&c.length%2===0?decodificar(c):null;
+  if(!r)return;
+  alvo=r;
+  $('setup').classList.add('hide');$('result').classList.add('hide');
+  $('link').classList.remove('hide');
+  $('quem').textContent=r.de+', você tirou:';
+  $('amigo').textContent='• • • • •';
+  $('rev').classList.remove('hide');
+}
+addEventListener('hashchange',checarHash);
+render();checarHash();
+</script>
+</body>
+</html>
